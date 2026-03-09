@@ -889,6 +889,14 @@ def api_ask():
                 "status": "role_selected"
             })
         
+        # Vérifier si le rôle est confirmé
+        if not is_role_confirmed(session_id):
+            return jsonify({
+                "response": "<p>Veuillez d'abord sélectionner votre profil pour que je puisse mieux vous aider.</p>",
+                "role_confirmed": False,
+                "status": "role_required"
+            })
+            
         # Ajout à l'historique de conversation
         conversation_history_global[session_id].append({"role": "user", "content": user_query})
         

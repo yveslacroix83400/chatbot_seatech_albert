@@ -224,20 +224,21 @@
                     </div>
                 </div>
 
-                <form class="chat-form" id="chatForm"
+                <form class="chat-form{% if not user_profile.get('confirmed') %} disabled{% endif %}" id="chatForm"
                     method="POST" action="/">
                     <div class="chat-input-container">
                         <img src="{{ url_for('static', filename='img/cat_walking.png') }}" alt="Chat qui marche"
                             class="cat-walking">
                         <input type="text" name="query" id="queryInput" class="chat-input"
-                            placeholder="Posez votre question sur SeaTech..."
-                            required autocomplete="off"
+                            placeholder="{% if user_profile.get('confirmed') %}Posez votre question sur SeaTech...{% else %}Sélectionnez d'abord votre profil ci-dessus{% endif %}"
+                            {% if not user_profile.get('confirmed') %}disabled{% endif %} required autocomplete="off"
                             aria-label="Votre question">
 
 
                     </div>
                     <!-- Bouton micro -->
-                    <button type="button" id="micButton" class="mic-button">
+                    <button type="button" id="micButton" class="mic-button" {% if not user_profile.get('confirmed')
+                        %}disabled{% endif %}>
                         <i class="fas fa-microphone"></i>
                     </button>
 
@@ -246,7 +247,8 @@
                         <i class="fas fa-comments"></i> Start conversation
                     </button>
 
-                    <button type="submit" class="send-button">
+                    <button type="submit" class="send-button" {% if not user_profile.get('confirmed') %}disabled{% endif
+                        %}>
                         Envoyer
                         <img src="{{ url_for('static', filename='img/cat-icon.png') }}" alt="Chat" class="cat-icon"
                             width="20" height="20">
