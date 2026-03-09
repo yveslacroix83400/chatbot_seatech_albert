@@ -1,0 +1,13 @@
+# Python virtual environment
+seatech_chatbot/
+*.pyc
+__pycache__/
+*.pyd
+*.whl
+*.zip
+*.env
+
+# Data / cache / models
+models/
+cache/
+database/
