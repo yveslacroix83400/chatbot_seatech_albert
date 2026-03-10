@@ -380,50 +380,25 @@
             if (confirmRoleBtn) {
                 confirmRoleBtn.addEventListener('click', function () {
                     if (selectedRole) {
-                        console.log('Envoi de la sélection de rôle:', selectedRole);
-                        confirmRoleBtn.disabled = true;
-                        confirmRoleBtn.textContent = 'En cours...';
-                        
                         fetch('/api/ask', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ role_selection: selectedRole }),
                             credentials: 'same-origin'
                         })
-                            .then(response => {
-                                console.log('Réponse status:', response.status);
-                                return response.json();
-                            })
+                            .then(response => response.json())
                             .then(data => {
-                                console.log('Données reçues:', data);
                                 if (data.status === 'role_selected') {
-                                    console.log('Rôle sélectionné avec succès, rechargement...');
-                                    // Attendre 500ms avant de recharger pour assurer la sauvegarde de la session
-                                    setTimeout(() => {
-                                        window.location.href = window.location.origin + '/';
-                                    }, 500);
-                                } else {
-                                    console.error('Erreur: statut inattendu', data);
-                                    alert('Erreur lors de la sélection du rôle. Veuillez réessayer.');
-                                    confirmRoleBtn.disabled = false;
-                                    confirmRoleBtn.textContent = '✓ Confirmer mon profil';
+                                    window.location.reload();
                                 }
                             })
-                            .catch(error => {
-                                console.error('Erreur lors de la sélection de rôle:', error);
-                                alert('Erreur réseau: ' + error.message);
-                                confirmRoleBtn.disabled = false;
-                                confirmRoleBtn.textContent = '✓ Confirmer mon profil';
-                            });
+                            .catch(error => console.error('Erreur lors de la sélection de rôle:', error));
                     }
                 });
             }
 
             if (resetRoleBtn) {
                 resetRoleBtn.addEventListener('click', function () {
-                    console.log('Réinitialisation du rôle...');
-                    resetRoleBtn.disabled = true;
-                    
                     fetch('/api/reset-role', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -431,17 +406,11 @@
                     })
                         .then(response => response.json())
                         .then(data => {
-                            console.log('Réponse réinitialisation:', data);
                             if (data.status === 'role_reset') {
-                                setTimeout(() => {
-                                    window.location.href = window.location.origin + '/';
-                                }, 500);
+                                window.location.reload();
                             }
                         })
-                        .catch(error => {
-                            console.error('Erreur lors de la réinitialisation:', error);
-                            resetRoleBtn.disabled = false;
-                        });
+                        .catch(error => console.error('Erreur lors de la réinitialisation:', error));
                 });
             }
 
