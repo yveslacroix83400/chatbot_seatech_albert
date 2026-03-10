@@ -549,7 +549,9 @@ def search_similar_chunks_with_confirmed_role(query, index, is_faiss, embeddings
 def is_role_confirmed(session_id):
     """Vérifie si l'utilisateur a confirmé son rôle."""
     user_profile = session.get('user_profile', {})
-    return user_profile.get('confirmed', False)
+    confirmed = user_profile.get('confirmed', False)
+    logger.info(f"Vérification rôle pour session {session_id}: user_profile={user_profile}, confirmed={confirmed}")
+    return confirmed
 
 def get_confirmed_role(session_id):
     """Récupère le rôle confirmé de l'utilisateur."""
@@ -801,6 +803,10 @@ def index():
         session.modified = True
     session_id = session['session_id']
     
+    logger.info(f"Route / appelée - Session ID: {session_id}")
+    logger.info(f"Session complète: {dict(session)}")
+    logger.info(f"User profile dans session: {session.get('user_profile')}")
+    
     if session_id not in conversation_history_global:
         conversation_history_global[session_id] = []
     
@@ -872,6 +878,8 @@ def api_ask():
     """Endpoint API pour la recherche avec gestion de rôle."""
     session.permanent = True
     start_time = time.time()
+    print("DATA RECU:", data)
+    print("SESSION:", session)
     try:
         data = request.get_json()
         user_query = data.get("query", "").strip()
@@ -897,8 +905,11 @@ def api_ask():
         
         # Gérer la sélection de rôle
         if role_selection:
-            handle_role_selection(session_id, role_selection)
-            logger.info(f"Rôle {role_selection} sélectionné via API pour session {session_id}")
+            logger.info(f"Tentative de sélection de rôle: {role_selection} pour session {session_id}")
+            result = handle_role_selection(session_id, role_selection)
+            logger.info(f"Résultat handle_role_selection: {result}")
+            logger.info(f"Session après sélection: {dict(session)}")
+            logger.info(f"Session user_profile: {session.get('user_profile')}")
             return jsonify({
                 "response": f"<p>Rôle <strong>{role_selection}</strong> sélectionné avec succès ! Vous pouvez maintenant poser vos questions.</p>",
                 "role_confirmed": True,
