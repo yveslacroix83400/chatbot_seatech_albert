@@ -143,10 +143,12 @@ def handle_role_selection(session_id, selected_role=None):
         # Marquer la session comme permanente pour la persister
         session.permanent = True
         
-        if 'user_profile' not in session:
-            session['user_profile'] = {}
-        session['user_profile']['role'] = selected_role
-        session['user_profile']['confirmed'] = True
+        # Créer un nouveau dictionnaire et l'assigner à session (crucial pour que Flask détecte les modifications)
+        user_profile = {
+            'role': selected_role,
+            'confirmed': True
+        }
+        session['user_profile'] = user_profile
         
         # Force Flask à sauvegarder la session
         session.modified = True
@@ -166,6 +168,7 @@ def handle_role_selection(session_id, selected_role=None):
         })
         
         logger.info(f"Rôle '{selected_role}' confirmé pour la session {session_id}")
+        logger.info(f"Session après confirmation: {dict(session)}")
         return selected_role
     
     return None
