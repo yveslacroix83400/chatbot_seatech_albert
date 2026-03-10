@@ -878,10 +878,11 @@ def api_ask():
     """Endpoint API pour la recherche avec gestion de rôle."""
     session.permanent = True
     start_time = time.time()
-    print("DATA RECU:", data)
-    print("SESSION:", session)
+
     try:
         data = request.get_json()
+        print("DATA RECU:", data)
+        print("SESSION:", session)
         user_query = data.get("query", "").strip()
         role_selection = data.get("role_selection", None)
         
