@@ -769,7 +769,7 @@ chunk_embeddings, chunks_with_sources = compute_embeddings(chunks_with_sources)
 search_index, use_faiss = setup_search_index(chunk_embeddings)
 
 # ===== APPLICATION FLASK =====
-app = Flask(__name__)
+app = Flask(__name__, static_folder="static", template_folder="templates")
 app.secret_key = 'seatech_chat_secret_key'
 conversation_history_global = {}
 # ajout Daly
