@@ -356,7 +356,10 @@
             const selectedRoleName = document.getElementById('selectedRoleName');
 
             let selectedRole = null;
-
+            const savedRole = localStorage.getItem("seatech_role");
+            if(savedRole){
+                selectedRole = savedRole;
+            }
             const loadingMessages = [
                 "Freddy fouille dans les archives...",
                 "Freddy déchiffre les acronymes de SeaTech... 🐱",
@@ -383,7 +386,7 @@
                         console.log('Envoi de la sélection de rôle:', selectedRole);
                         confirmRoleBtn.disabled = true;
                         confirmRoleBtn.textContent = 'En cours...';
-                        
+                        localStorage.setItem("seatech_role", role);
                         fetch('/api/ask', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
