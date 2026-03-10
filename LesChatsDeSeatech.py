@@ -138,20 +138,13 @@ def handle_role_selection(session_id, selected_role=None):
     if session_id not in conversation_history_global:
         conversation_history_global[session_id] = []
     print(f"Session {session_id} - Rôle sélectionné : {selected_role}")
-    # Si un rôle est sélectionné, l'enregistrer dans la session
+    # Si un rôle est sélectionné, l'enregistrer dans le dictionnaire global
     if selected_role and selected_role in profile_mapping:
-        # Marquer la session comme permanente pour la persister
-        session.permanent = True
-        
-        # Créer un nouveau dictionnaire et l'assigner à session (crucial pour que Flask détecte les modifications)
-        user_profile = {
+        # Stocker le profil dans le dictionnaire global (plus fiable que Flask Session)
+        user_profiles_global[session_id] = {
             'role': selected_role,
             'confirmed': True
         }
-        session['user_profile'] = user_profile
-        
-        # Force Flask à sauvegarder la session
-        session.modified = True
         
         # Message de bienvenue personnalisé selon le rôle
         role_config = profile_mapping[selected_role]
@@ -168,7 +161,7 @@ def handle_role_selection(session_id, selected_role=None):
         })
         
         logger.info(f"Rôle '{selected_role}' confirmé pour la session {session_id}")
-        logger.info(f"Session après confirmation: {dict(session)}")
+        logger.info(f"user_profiles_global après confirmation: {user_profiles_global}")
         return selected_role
     
     return None
@@ -551,15 +544,15 @@ def search_similar_chunks_with_confirmed_role(query, index, is_faiss, embeddings
 # 3. Fonction pour vérifier si l'utilisateur a confirmé son rôle
 def is_role_confirmed(session_id):
     """Vérifie si l'utilisateur a confirmé son rôle."""
-    user_profile = session.get('user_profile', {})
-    confirmed = user_profile.get('confirmed', False)
-    logger.info(f"Vérification rôle pour session {session_id}: user_profile={user_profile}, confirmed={confirmed}")
+    confirmed = session_id in user_profiles_global and user_profiles_global[session_id].get('confirmed', False)
+    logger.info(f"Vérification rôle pour session {session_id}: {confirmed}, profils={user_profiles_global}")
     return confirmed
 
 def get_confirmed_role(session_id):
     """Récupère le rôle confirmé de l'utilisateur."""
-    user_profile = session.get('user_profile', {})
-    return user_profile.get('role', None)
+    if session_id in user_profiles_global:
+        return user_profiles_global[session_id].get('role', None)
+    return None
 def keyword_search(query, chunks_data, top_n=5):
     """Recherche par mots-clés en fallback."""
     query_terms = query.lower().split()
@@ -788,6 +781,7 @@ app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['PERMANENT_SESSION_LIFETIME'] = 3600  # 1 heure
 conversation_history_global = {}
+user_profiles_global = {}  # Stocker les profils utilisateur plutôt que dans la session Flask
 # ajout Daly
 
 # Charger modèle Vosk une seule fois au démarrage
@@ -866,7 +860,9 @@ def index():
     
     conv = conversation_history_global.get(session_id, [])
     current_datetime = datetime.now()
-    user_profile = session.get('user_profile', {})
+    user_profile = user_profiles_global.get(session_id, {})
+    
+    logger.info(f"Route / render_template - session_id: {session_id}, user_profile: {user_profile}")
     
     return render_template("index.html", 
                          conversation=conv, 
@@ -1013,16 +1009,16 @@ def api_reset_role():
     """Permet de réinitialiser le rôle sélectionné."""
     session.permanent = True
     
-    if 'user_profile' in session:
-        session.pop('user_profile')
-        session.modified = True
-    
     if 'session_id' in session:
         session_id = session['session_id']
+        # Supprimer le profil du dictionnaire global
+        if session_id in user_profiles_global:
+            del user_profiles_global[session_id]
+        # Vider l'historique de conversation
         if session_id in conversation_history_global:
             conversation_history_global[session_id] = []
+        logger.info(f"Rôle réinitialisé pour la session {session_id}")
     
-    logger.info(f"Rôle réinitialisé pour la session {session.get('session_id')}")
     return jsonify({
         "response": "<p>Rôle réinitialisé. Veuillez sélectionner votre nouveau profil.</p>",
         "role_confirmed": False,
