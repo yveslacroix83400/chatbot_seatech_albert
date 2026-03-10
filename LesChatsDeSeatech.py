@@ -137,7 +137,7 @@ def handle_role_selection(session_id, selected_role=None):
     """Gère la sélection de rôle utilisateur et initialise la conversation."""
     if session_id not in conversation_history_global:
         conversation_history_global[session_id] = []
-    
+    print(f"Session {session_id} - Rôle sélectionné : {selected_role}")
     # Si un rôle est sélectionné, l'enregistrer dans la session
     if selected_role and selected_role in profile_mapping:
         if 'user_profile' not in session:
