@@ -140,10 +140,16 @@ def handle_role_selection(session_id, selected_role=None):
     
     # Si un rôle est sélectionné, l'enregistrer dans la session
     if selected_role and selected_role in profile_mapping:
+        # Marquer la session comme permanente pour la persister
+        session.permanent = True
+        
         if 'user_profile' not in session:
             session['user_profile'] = {}
         session['user_profile']['role'] = selected_role
         session['user_profile']['confirmed'] = True
+        
+        # Force Flask à sauvegarder la session
+        session.modified = True
         
         # Message de bienvenue personnalisé selon le rôle
         role_config = profile_mapping[selected_role]
@@ -159,6 +165,7 @@ def handle_role_selection(session_id, selected_role=None):
             "is_system_message": True
         })
         
+        logger.info(f"Rôle '{selected_role}' confirmé pour la session {session_id}")
         return selected_role
     
     return None
@@ -771,6 +778,10 @@ search_index, use_faiss = setup_search_index(chunk_embeddings)
 # ===== APPLICATION FLASK =====
 app = Flask(__name__, static_folder="static", template_folder="templates")
 app.secret_key = 'seatech_chat_secret_key'
+app.config['SESSION_COOKIE_SECURE'] = False  # Important pour développement/HTTP
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['PERMANENT_SESSION_LIFETIME'] = 3600  # 1 heure
 conversation_history_global = {}
 # ajout Daly
 
@@ -783,8 +794,11 @@ vosk_model = vosk.Model("models/vosk-model-small-fr-0.22")
 @app.route("/", methods=["GET", "POST"])
 def index():
     """Page d'accueil du chatbot avec gestion de la sélection de rôle."""
+    session.permanent = True
+    
     if 'session_id' not in session:
         session['session_id'] = str(uuid.uuid4())
+        session.modified = True
     session_id = session['session_id']
     
     if session_id not in conversation_history_global:
@@ -856,6 +870,7 @@ def index():
 @app.route("/api/ask", methods=["POST"])
 def api_ask():
     """Endpoint API pour la recherche avec gestion de rôle."""
+    session.permanent = True
     start_time = time.time()
     try:
         data = request.get_json()
@@ -875,6 +890,7 @@ def api_ask():
         # Gestion de la session
         if 'session_id' not in session:
             session['session_id'] = str(uuid.uuid4())
+            session.modified = True
         session_id = session['session_id']
         if session_id not in conversation_history_global:
             conversation_history_global[session_id] = []
@@ -882,6 +898,7 @@ def api_ask():
         # Gérer la sélection de rôle
         if role_selection:
             handle_role_selection(session_id, role_selection)
+            logger.info(f"Rôle {role_selection} sélectionné via API pour session {session_id}")
             return jsonify({
                 "response": f"<p>Rôle <strong>{role_selection}</strong> sélectionné avec succès ! Vous pouvez maintenant poser vos questions.</p>",
                 "role_confirmed": True,
@@ -978,14 +995,18 @@ def api_role_info():
 @app.route("/api/reset-role", methods=["POST"])
 def api_reset_role():
     """Permet de réinitialiser le rôle sélectionné."""
+    session.permanent = True
+    
     if 'user_profile' in session:
         session.pop('user_profile')
+        session.modified = True
     
     if 'session_id' in session:
         session_id = session['session_id']
         if session_id in conversation_history_global:
             conversation_history_global[session_id] = []
     
+    logger.info(f"Rôle réinitialisé pour la session {session.get('session_id')}")
     return jsonify({
         "response": "<p>Rôle réinitialisé. Veuillez sélectionner votre nouveau profil.</p>",
         "role_confirmed": False,
