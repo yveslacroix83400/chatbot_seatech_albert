@@ -802,7 +802,7 @@ def index():
     
     logger.info(f"Route / appelée - Session ID: {session_id}")
     logger.info(f"Session complète: {dict(session)}")
-    logger.info(f"User profile dans session: {session.get('user_profile')}")
+    logger.info(f"User profile dans session: {user_profiles_global}")
     
     if session_id not in conversation_history_global:
         conversation_history_global[session_id] = []
