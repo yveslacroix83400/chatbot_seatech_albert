@@ -135,6 +135,7 @@ else:
 
 def handle_role_selection(session_id, selected_role=None):
     """Gère la sélection de rôle utilisateur et initialise la conversation."""
+    print(f"handle_role_selection appelé avec session_id={session_id} et selected_role={selected_role}")
     if session_id not in conversation_history_global:
         conversation_history_global[session_id] = []
     print(f"Session {session_id} - Rôle sélectionné : {selected_role}")
