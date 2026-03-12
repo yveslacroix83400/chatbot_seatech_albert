@@ -386,7 +386,7 @@
                         console.log('Envoi de la sélection de rôle:', selectedRole);
                         confirmRoleBtn.disabled = true;
                         confirmRoleBtn.textContent = 'En cours...';
-                        localStorage.setItem("seatech_role", role);
+                        localStorage.setItem("seatech_role", selectedRole);
                         fetch('/api/ask', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
