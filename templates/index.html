@@ -336,6 +336,17 @@
         document.addEventListener('DOMContentLoaded', function () {
             let isConversationMode = false; // mode conversation activé/désactivé
 
+            // Smooth scroll vers la zone de chat après sélection de rôle
+            if (sessionStorage.getItem('scroll_to_chat')) {
+                sessionStorage.removeItem('scroll_to_chat');
+                const chatSection = document.querySelector('.chat-container');
+                if (chatSection) {
+                    setTimeout(() => {
+                        chatSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }, 150);
+                }
+            }
+
 
             const chatForm = document.getElementById('chatForm');
             const chatHistory = document.getElementById('chatHistory');
@@ -402,6 +413,7 @@
                                 console.log('Données reçues:', data);
                                 if (data.status === 'role_selected') {
                                     console.log('Rôle sélectionné avec succès, rechargement...');
+                                    sessionStorage.setItem('scroll_to_chat', '1');
                                     // Attendre 500ms avant de recharger pour assurer la sauvegarde de la session
                                     setTimeout(() => {
                                         window.location.href = window.location.origin + '/';
@@ -449,6 +461,7 @@
                     .then(data => {
                         if (data && data.status === 'role_selected') {
                             console.log('Auto-enregistrement rôle réussi');
+                            sessionStorage.setItem('scroll_to_chat', '1');
                             window.location.href = window.location.origin + '/';
                         }
                     })
