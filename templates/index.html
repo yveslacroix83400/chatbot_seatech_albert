@@ -422,8 +422,8 @@
                     }
                 });
 
-                // si on a déjà enregistré un rôle, envoyer automatiquement au back
-                if (selectedRole) {
+                // si on a déjà enregistré un rôle, envoyer automatiquement au back seulement si le rôle n'est pas encore confirmé
+                if (selectedRole && document.querySelector('.role-selection-container')) {
                     console.log('Role déjà présent en localStorage:', selectedRole);
                     // lancer en tâche de fond, sans bloquer
                     fetch('/api/ask', {
