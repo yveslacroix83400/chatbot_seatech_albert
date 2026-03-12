@@ -357,9 +357,10 @@
 
             let selectedRole = null;
             const savedRole = localStorage.getItem("seatech_role");
-            if(savedRole){
+            if (savedRole) {
                 selectedRole = savedRole;
             }
+
             const loadingMessages = [
                 "Freddy fouille dans les archives...",
                 "Freddy déchiffre les acronymes de SeaTech... 🐱",
@@ -420,6 +421,26 @@
                             });
                     }
                 });
+
+                // si on a déjà enregistré un rôle, envoyer automatiquement au back
+                if (selectedRole) {
+                    console.log('Role déjà présent en localStorage:', selectedRole);
+                    // lancer en tâche de fond, sans bloquer
+                    fetch('/api/ask', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ role_selection: selectedRole }),
+                        credentials: 'include'
+                    })
+                    .then(resp => resp.json())
+                    .then(data => {
+                        console.log('Auto-enregistrement rôle', data);
+                        if (data.status === 'role_selected') {
+                            window.location.href = window.location.origin + '/';
+                        }
+                    })
+                    .catch(err => console.error('Erreur auto-role', err));
+                }
             }
 
             if (resetRoleBtn) {
