@@ -423,8 +423,11 @@
                 });
 
                 // si on a déjà enregistré un rôle, envoyer automatiquement au back seulement si le rôle n'est pas encore confirmé
-                if (selectedRole && document.querySelector('.role-selection-container')) {
+                // et qu'on n'a pas déjà essayé cette session
+                const autoSubmitAttempted = sessionStorage.getItem("auto_submit_attempted");
+                if (selectedRole && document.querySelector('.role-selection-container') && !autoSubmitAttempted) {
                     console.log('Role déjà présent en localStorage:', selectedRole);
+                    sessionStorage.setItem("auto_submit_attempted", "true");
                     // lancer en tâche de fond, sans bloquer
                     fetch('/api/ask', {
                         method: 'POST',
@@ -432,14 +435,27 @@
                         body: JSON.stringify({ role_selection: selectedRole }),
                         credentials: 'include'
                     })
-                    .then(resp => resp.json())
+                    .then(resp => {
+                        if (resp.status === 429) {
+                            console.log('Trop de requêtes, réessai dans 5 secondes...');
+                            sessionStorage.removeItem("auto_submit_attempted"); // permettre un nouvel essai
+                            setTimeout(() => {
+                                window.location.reload();
+                            }, 5000);
+                            return;
+                        }
+                        return resp.json();
+                    })
                     .then(data => {
-                        console.log('Auto-enregistrement rôle', data);
-                        if (data.status === 'role_selected') {
+                        if (data && data.status === 'role_selected') {
+                            console.log('Auto-enregistrement rôle réussi');
                             window.location.href = window.location.origin + '/';
                         }
                     })
-                    .catch(err => console.error('Erreur auto-role', err));
+                    .catch(err => {
+                        console.error('Erreur auto-role:', err);
+                        sessionStorage.removeItem("auto_submit_attempted"); // permettre un nouvel essai en cas d'erreur
+                    });
                 }
             }
 
