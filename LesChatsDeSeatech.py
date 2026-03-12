@@ -777,9 +777,9 @@ search_index, use_faiss = setup_search_index(chunk_embeddings)
 # ===== APPLICATION FLASK =====
 app = Flask(__name__, static_folder="static", template_folder="templates")
 app.secret_key = 'seatech_chat_secret_key'
-app.config['SESSION_COOKIE_SECURE'] = False  # Important pour développement/HTTP
+app.config['SESSION_COOKIE_SECURE'] = True   # HTTPS requis sur HuggingFace Spaces
 app.config['SESSION_COOKIE_HTTPONLY'] = True
-app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['SESSION_COOKIE_SAMESITE'] = 'None'  # Nécessaire pour l'iframe HF
 app.config['PERMANENT_SESSION_LIFETIME'] = 3600  # 1 heure
 conversation_history_global = {}
 user_profiles_global = {}  # Stocker les profils utilisateur plutôt que dans la session Flask
