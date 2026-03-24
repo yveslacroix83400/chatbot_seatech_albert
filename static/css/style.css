@@ -51,7 +51,7 @@ body {
 /* LAYOUT PRINCIPAL */
 .main-container {
     display: grid;
-    grid-template-columns: 250px 1fr 300px;
+    grid-template-columns: minmax(0, 1fr) 340px;
     gap: 1.5rem;
     padding: 1rem;
     width: 100%;
@@ -191,6 +191,7 @@ body {
 .container {
     display: flex;
     flex-direction: column;
+    min-width: 0;
 }
 
 .header {
@@ -562,6 +563,7 @@ h1 {
     position: sticky;
     top: 1rem;
     transition: transform var(--transition-normal), box-shadow var(--transition-normal);
+    width: 100%;
 }
 
 .freddy-panel:hover {
@@ -1002,7 +1004,7 @@ h1 {
 /* MEDIA QUERIES */
 @media (max-width: 1200px) {
     .main-container {
-        grid-template-columns: 220px 1fr 250px;
+        grid-template-columns: minmax(0, 1fr) 300px;
         gap: 1rem;
     }
 }
