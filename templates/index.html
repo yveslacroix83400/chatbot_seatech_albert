@@ -16,53 +16,7 @@
 <body>
     <div class="main-container">
         <!-- Sidebar -->
-        <aside class="sidebar card">
-            <div class="sidebar-header">
-                <h2>Les Chats De SeaTech</h2>
-                <div class="cats-logo">
-                    <img src="{{ url_for('static', filename='img/franky.png') }}" alt="Franky" class="cat-avatar"
-                        loading="lazy">
-                    <img src="{{ url_for('static', filename='img/freddy.png') }}" alt="Freddy" class="cat-avatar"
-                        loading="lazy">
-                </div>
-            </div>
-            <nav>
-                <div class="sidebar-section">
-                    <h3>Liens SeaTech</h3>
-                    <ul>
-                        <li><a href="https://seatech.univ-tln.fr/" target="_blank" rel="noopener">SeaTech Officiel</a>
-                        </li>
-                        <li><a href="https://www.univ-tln.fr/" target="_blank" rel="noopener">Université de Toulon</a>
-                        </li>
-                    </ul>
-                </div>
-                <div class="sidebar-section">
-                    <h3>Formations</h3>
-                    <ul>
-                        <li><a href="https://seatech.univ-tln.fr/devenir-ingenieur" target="_blank"
-                                rel="noopener">Devenir Ingénieur</a></li>
-                        <li><a href="https://seatech.univ-tln.fr/Formation-d-ingenieurs-Materiaux-par-apprentissage.html"
-                                target="_blank" rel="noopener">Matériaux (Apprentissage)</a></li>
-                        <li><a href="https://seatech.univ-tln.fr/Formation-d-ingenieurs-en-systemes-numeriques-par-apprentissage.html"
-                                target="_blank" rel="noopener">Systèmes Numériques (Apprentissage)</a></li>
-                    </ul>
-                </div>
-                <div class="sidebar-section">
-                    <h3>Informations</h3>
-                    <ul>
-                        <li><a href="https://seatech.univ-tln.fr/recherche" target="_blank" rel="noopener">Recherche</a>
-                        </li>
-                        <li><a href="https://seatech.univ-tln.fr/international" target="_blank"
-                                rel="noopener">International</a></li>
-                        <li><a href="https://seatech.univ-tln.fr/Contacts.html" target="_blank"
-                                rel="noopener">Contacts</a></li>
-                    </ul>
-                </div>
-            </nav>
-            <div class="sidebar-footer">
-                <p>Posez-moi vos questions sur SeaTech!</p>
-            </div>
-        </aside>
+        
 
         <!-- Contenu principal -->
         <main class="container">
@@ -128,11 +82,8 @@
                     </div>
                 </div>
 
-                <div class="confirm-role-section">
-                    <p>Rôle sélectionné : <strong id="selectedRoleName"></strong></p>
-                    <button class="confirm-button" id="confirmRoleBtn">
-                        <i class="fas fa-check"></i> Confirmer mon profil
-                    </button>
+                <div class="confirm-role-section active">
+                    <p><i class="fas fa-mouse-pointer"></i> Cliquez sur un profil pour le confirmer automatiquement.</p>
                 </div>
             </section>
             {% else %}
@@ -361,12 +312,10 @@
 
             // Éléments de sélection de rôle
             const roleButtons = document.querySelectorAll('.role-button');
-            const confirmRoleSection = document.querySelector('.confirm-role-section');
-            const confirmRoleBtn = document.getElementById('confirmRoleBtn');
             const resetRoleBtn = document.getElementById('resetRoleBtn');
-            const selectedRoleName = document.getElementById('selectedRoleName');
 
             let selectedRole = null;
+            let isSubmittingRole = false;
             const savedRole = localStorage.getItem("seatech_role");
             if (savedRole) {
                 selectedRole = savedRole;
@@ -381,95 +330,90 @@
                 "Les moustaches de Freddy frémissent... il est sur une piste!"
             ];
 
-            // Gestion de la sélection de rôle
+            function submitRoleSelection(role, isAutoSubmit = false) {
+                if (!role || isSubmittingRole) return;
+
+                isSubmittingRole = true;
+                roleButtons.forEach(btn => {
+                    btn.style.pointerEvents = 'none';
+                });
+
+                console.log('Envoi de la sélection de rôle:', role);
+                localStorage.setItem("seatech_role", role);
+
+                fetch('/api/ask', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ role_selection: role }),
+                    credentials: 'include'
+                })
+                    .then(response => {
+                        console.log('Réponse status:', response.status);
+
+                        if (response.status === 429) {
+                            if (isAutoSubmit) {
+                                console.log('Trop de requêtes, réessai dans 5 secondes...');
+                                sessionStorage.removeItem("auto_submit_attempted");
+                                setTimeout(() => {
+                                    window.location.reload();
+                                }, 5000);
+                                return null;
+                            }
+                            throw new Error('Serveur temporairement occupé. Réessayez dans quelques secondes.');
+                        }
+
+                        return response.json();
+                    })
+                    .then(data => {
+                        if (!data) return;
+
+                        console.log('Données reçues:', data);
+                        if (data.status === 'role_selected') {
+                            console.log('Rôle sélectionné avec succès, rechargement...');
+                            sessionStorage.setItem('scroll_to_chat', '1');
+                            setTimeout(() => {
+                                window.location.href = window.location.origin + '/';
+                            }, 500);
+                            return;
+                        }
+
+                        throw new Error('Erreur lors de la sélection du rôle. Veuillez réessayer.');
+                    })
+                    .catch(error => {
+                        console.error('Erreur lors de la sélection de rôle:', error);
+                        if (!isAutoSubmit) {
+                            alert(error.message || 'Erreur réseau. Veuillez réessayer.');
+                        } else {
+                            sessionStorage.removeItem("auto_submit_attempted");
+                        }
+                    })
+                    .finally(() => {
+                        isSubmittingRole = false;
+                        roleButtons.forEach(btn => {
+                            btn.style.pointerEvents = '';
+                        });
+                    });
+            }
+
+            // Gestion de la sélection de rôle: confirmation immédiate au clic
             roleButtons.forEach(button => {
                 button.addEventListener('click', function () {
+                    if (isSubmittingRole) return;
+
                     roleButtons.forEach(btn => btn.classList.remove('selected'));
                     this.classList.add('selected');
                     selectedRole = this.dataset.role;
-                    selectedRoleName.textContent = selectedRole;
-                    confirmRoleSection.classList.add('active');
+                    submitRoleSelection(selectedRole);
                 });
             });
 
-            if (confirmRoleBtn) {
-                confirmRoleBtn.addEventListener('click', function () {
-                    if (selectedRole) {
-                        console.log('Envoi de la sélection de rôle:', selectedRole);
-                        confirmRoleBtn.disabled = true;
-                        confirmRoleBtn.textContent = 'En cours...';
-                        localStorage.setItem("seatech_role", selectedRole);
-                        fetch('/api/ask', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ role_selection: selectedRole }),
-                            credentials: 'include'
-                        })
-                            .then(response => {
-                                console.log('Réponse status:', response.status);
-                                return response.json();
-                            })
-                            .then(data => {
-                                console.log('Données reçues:', data);
-                                if (data.status === 'role_selected') {
-                                    console.log('Rôle sélectionné avec succès, rechargement...');
-                                    sessionStorage.setItem('scroll_to_chat', '1');
-                                    // Attendre 500ms avant de recharger pour assurer la sauvegarde de la session
-                                    setTimeout(() => {
-                                        window.location.href = window.location.origin + '/';
-                                    }, 500);
-                                } else {
-                                    console.error('Erreur: statut inattendu', data);
-                                    alert('Erreur lors de la sélection du rôle. Veuillez réessayer.');
-                                    confirmRoleBtn.disabled = false;
-                                    confirmRoleBtn.textContent = '✓ Confirmer mon profil';
-                                }
-                            })
-                            .catch(error => {
-                                console.error('Erreur lors de la sélection de rôle:', error);
-                                alert('Erreur réseau: ' + error.message);
-                                confirmRoleBtn.disabled = false;
-                                confirmRoleBtn.textContent = '✓ Confirmer mon profil';
-                            });
-                    }
-                });
-
-                // si on a déjà enregistré un rôle, envoyer automatiquement au back seulement si le rôle n'est pas encore confirmé
-                // et qu'on n'a pas déjà essayé cette session
-                const autoSubmitAttempted = sessionStorage.getItem("auto_submit_attempted");
-                if (selectedRole && document.querySelector('.role-selection-container') && !autoSubmitAttempted) {
-                    console.log('Role déjà présent en localStorage:', selectedRole);
-                    sessionStorage.setItem("auto_submit_attempted", "true");
-                    // lancer en tâche de fond, sans bloquer
-                    fetch('/api/ask', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ role_selection: selectedRole }),
-                        credentials: 'include'
-                    })
-                    .then(resp => {
-                        if (resp.status === 429) {
-                            console.log('Trop de requêtes, réessai dans 5 secondes...');
-                            sessionStorage.removeItem("auto_submit_attempted"); // permettre un nouvel essai
-                            setTimeout(() => {
-                                window.location.reload();
-                            }, 5000);
-                            return;
-                        }
-                        return resp.json();
-                    })
-                    .then(data => {
-                        if (data && data.status === 'role_selected') {
-                            console.log('Auto-enregistrement rôle réussi');
-                            sessionStorage.setItem('scroll_to_chat', '1');
-                            window.location.href = window.location.origin + '/';
-                        }
-                    })
-                    .catch(err => {
-                        console.error('Erreur auto-role:', err);
-                        sessionStorage.removeItem("auto_submit_attempted"); // permettre un nouvel essai en cas d'erreur
-                    });
-                }
+            // si on a déjà enregistré un rôle, envoyer automatiquement au back seulement si le rôle n'est pas encore confirmé
+            // et qu'on n'a pas déjà essayé cette session
+            const autoSubmitAttempted = sessionStorage.getItem("auto_submit_attempted");
+            if (selectedRole && document.querySelector('.role-selection-container') && !autoSubmitAttempted) {
+                console.log('Role déjà présent en localStorage:', selectedRole);
+                sessionStorage.setItem("auto_submit_attempted", "true");
+                submitRoleSelection(selectedRole, true);
             }
 
             if (resetRoleBtn) {
