@@ -1038,6 +1038,41 @@ h1 {
     .chat-history {
         padding: 1rem;
     }
+
+    .chat-form {
+        flex-wrap: wrap;
+        gap: 0.6rem;
+        align-items: stretch;
+    }
+
+    .chat-input-container {
+        flex-basis: 100%;
+    }
+
+    .chat-input {
+        padding: 0.85rem 1rem 0.85rem 3.2rem;
+    }
+
+    .cat-walking {
+        left: 10px;
+        width: 28px;
+        height: 28px;
+    }
+
+    .chat-form .mic-button,
+    .chat-form .conversation-button,
+    .chat-form .send-button {
+        margin-left: 0;
+    }
+
+    .chat-form .conversation-button {
+        flex: 1;
+        min-width: 160px;
+    }
+
+    .chat-form .send-button {
+        margin-left: auto;
+    }
     .message-content {
         padding: 0.8rem 1rem;
     }
@@ -1061,10 +1096,49 @@ h1 {
         max-width: 90%;
     }
     .chat-form {
-        padding: 0.8rem;
+        padding: 0.75rem;
+        gap: 0.5rem;
     }
-    .send-button {
-        padding: 0.6rem 1rem;
+
+    .chat-input {
+        font-size: 0.95rem;
+        padding: 0.78rem 0.95rem 0.78rem 2.9rem;
+    }
+
+    .cat-walking {
+        left: 9px;
+        width: 24px;
+        height: 24px;
+    }
+
+    .chat-form .mic-button {
+        width: 42px;
+        height: 42px;
+        border-radius: 999px;
+        background: var(--hover-color);
+        border: 1px solid var(--border-color);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.25rem;
+    }
+
+    .chat-form .conversation-button {
+        flex: 1;
+        min-width: 0;
+        padding: 8px 10px;
+        font-size: 0.95rem;
+        line-height: 1.2;
+        white-space: nowrap;
+    }
+
+    .chat-form .send-button {
+        padding: 0.65rem 0.95rem;
+        min-width: 110px;
+    }
+
+    .chat-form .cat-icon {
+        margin-left: 6px;
     }
     .sources-panel {
         width: 100%;
