@@ -286,6 +286,24 @@
     <script>
         document.addEventListener('DOMContentLoaded', function () {
             let isConversationMode = false; // mode conversation activé/désactivé
+            const isiOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
+                || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+            if (isiOS) {
+                document.body.classList.add('ios-device');
+            }
+
+            function updateAppViewportHeight() {
+                const viewportHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+                const vh = viewportHeight * 0.01;
+                document.documentElement.style.setProperty('--app-vh', `${vh}px`);
+            }
+
+            updateAppViewportHeight();
+            window.addEventListener('resize', updateAppViewportHeight);
+            if (window.visualViewport) {
+                window.visualViewport.addEventListener('resize', updateAppViewportHeight);
+            }
 
             // Smooth scroll vers la zone de chat après sélection de rôle
             if (sessionStorage.getItem('scroll_to_chat')) {
@@ -309,6 +327,20 @@
             const closeSourcesBtn = document.getElementById('closeSourcesBtn');
             const freddyLogs = document.getElementById('freddyLogs');
             const freddySources = document.getElementById('freddySources');
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+            if (isiOS && queryInput) {
+                queryInput.addEventListener('focus', function () {
+                    document.body.classList.add('keyboard-open');
+                    setTimeout(() => {
+                        queryInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }, 120);
+                });
+
+                queryInput.addEventListener('blur', function () {
+                    document.body.classList.remove('keyboard-open');
+                });
+            }
 
             // Éléments de sélection de rôle
             const roleButtons = document.querySelectorAll('.role-button');
@@ -619,8 +651,8 @@
 
             // === Reconnaissance vocale ===
             const micBtn = document.getElementById('micButton'); // utilise l'ID réel du bouton
-            if (micBtn && 'webkitSpeechRecognition' in window) {
-                const recognition = new webkitSpeechRecognition();
+            if (micBtn && SpeechRecognition) {
+                const recognition = new SpeechRecognition();
                 recognition.lang = "fr-FR";
                 recognition.continuous = false;
                 recognition.interimResults = false;
@@ -663,14 +695,17 @@
                 recognition.onend = () => {
                     micBtn.classList.remove("listening");
                 };
+            } else if (micBtn) {
+                micBtn.disabled = true;
+                micBtn.title = "Reconnaissance vocale non disponible sur ce navigateur";
             }
 
         
                 
         // === Mode conversation ===
         const conversationBtn = document.getElementById("conversationBtn");
-        if (conversationBtn && 'webkitSpeechRecognition' in window) {
-            const convRecognition = new webkitSpeechRecognition();
+        if (conversationBtn && SpeechRecognition) {
+            const convRecognition = new SpeechRecognition();
             convRecognition.lang = "fr-FR";
             convRecognition.continuous = false;
             convRecognition.interimResults = false;
@@ -756,6 +791,9 @@
             convRecognition.onend = () => {
                 if (isConversationMode) convRecognition.start(); // boucle tant que mode actif
             };
+        } else if (conversationBtn) {
+            conversationBtn.disabled = true;
+            conversationBtn.title = "Mode conversation vocale non disponible sur ce navigateur";
         }
 
     });
