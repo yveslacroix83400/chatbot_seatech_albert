@@ -66,7 +66,7 @@ QA_STORAGE = os.path.join(CACHE_DIR, "user_qa_memory.json")
 # ===== CONFIGURATION =====
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 
-LLM_MODEL = "llama-3.3-70b-versatile"
+LLM_MODEL = "openai/gpt-oss-20b" #llama-3.3-70b-versatile
 CONFIDENCE_THRESHOLD = 0.93
 
 # Acronymes utilisés
