@@ -76,6 +76,8 @@ ALBERT_API_KEY = os.getenv("ALBERT_API_KEY", "")
 ALBERT_BASE_URL = os.getenv("ALBERT_BASE_URL", "https://albert.api.etalab.gouv.fr/v1")
 ALBERT_MODEL = os.getenv("ALBERT_MODEL", "")
 
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "groq").strip().lower()
+
 LLM_MODEL = "openai/gpt-oss-20b" #llama-3.3-70b-versatile
 CONFIDENCE_THRESHOLD = 0.93
 
