@@ -731,6 +731,75 @@ def create_freddy_logs(query, results, detected_role=None, role_confidence=None)
     '''
     return html
 
+def call_groq(messages):
+    """Envoie une requête au modèle Groq actuellement configuré."""
+    if groq_client is None:
+        raise RuntimeError("Client Groq indisponible.")
+
+    response = groq_client.chat.completions.create(
+        model=LLM_MODEL,
+        messages=messages,
+        temperature=0.95,
+        max_tokens=28500,
+        timeout=40
+    )
+
+    return response.choices[0].message.content
+
+
+def call_albert(messages):
+    """Envoie une requête à Albert API avec des limites adaptées au RAG."""
+    if albert_client is None:
+        raise RuntimeError("Client Albert indisponible.")
+
+    if not ALBERT_MODEL:
+        raise RuntimeError("ALBERT_MODEL n'est pas configuré.")
+
+    response = albert_client.chat.completions.create(
+        model=ALBERT_MODEL,
+        messages=messages,
+        temperature=0.2,
+        max_tokens=1200,
+        stream=False,
+        timeout=40
+    )
+
+    return response.choices[0].message.content
+
+def call_llm(messages):
+    """
+    Sélectionne le fournisseur LLM configuré.
+
+    Si Albert est sélectionné mais indisponible, un retour vers Groq
+    est tenté automatiquement.
+    """
+    if LLM_PROVIDER == "albert":
+        try:
+            logger.info("Appel du fournisseur Albert")
+            return call_albert(messages)
+        except Exception as albert_error:
+            logger.error(
+                f"Échec Albert, tentative de retour vers Groq : "
+                f"{type(albert_error).__name__}: {albert_error}"
+            )
+
+            if groq_client is not None:
+                return call_groq(messages)
+
+            raise RuntimeError(
+                "Albert a échoué et aucun client Groq de secours "
+                "n'est disponible."
+            ) from albert_error
+
+    if LLM_PROVIDER == "groq":
+        logger.info("Appel du fournisseur Groq")
+        return call_groq(messages)
+
+    raise ValueError(
+        f"Fournisseur LLM inconnu : {LLM_PROVIDER}. "
+        "Valeurs autorisées : groq ou albert."
+    )
+
 # ===== GÉNÉRATION DE RÉPONSE AVEC MÉMOIRE DE CONVERSATION =====
 def generate_answer(query, context, conversation_history, found_info=False, detected_role=None):
     """
@@ -818,28 +887,20 @@ Données d'aide pour répondre :
 {context}
 """
     try:
-        if groq_client:
-            response = groq_client.chat.completions.create(
-                model=LLM_MODEL,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": query}
-                ],
-                temperature=0.95,
-                max_tokens=28500,
-                # Ajout d'un timeout pour éviter les attentes trop longues
-                timeout=40
-            )
-            answer = response.choices[0].message.content
-            answer = convert_markdown_to_html(answer)
-            # Détection d'hallucinations simples
-            if any(x in answer.lower() for x in ["@freddy", "freddy@"]):
-                logger.warning("Hallucination détectée - correction appliquée")
-                answer = "<p>⚠️ Je ne peux pas inventer de contacts inexistants.</p>"
-            return answer
-        else:
-            # Amélioration du message de fallback
-            return "<p>Désolé, le service de génération de réponse n'est pas disponible actuellement. Veuillez réessayer plus tard ou contacter l'administrateur.</p>"
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": query}
+        ]
+
+        answer = call_llm(messages)
+        answer = convert_markdown_to_html(answer)
+
+        # Détection d'hallucinations simples
+        if any(x in answer.lower() for x in ["@freddy", "freddy@"]):
+            logger.warning("Hallucination détectée - correction appliquée")
+            answer = "<p>⚠️ Je ne peux pas inventer de contacts inexistants.</p>"
+
+        return answer
     except Exception as e:
         logger.error(f"Erreur génération réponse: {e}")
         # Message d'erreur plus informatif
