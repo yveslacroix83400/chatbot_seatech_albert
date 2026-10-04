@@ -1009,7 +1009,6 @@ def api_role_info():
         "status": "success"
     })
 @app.route("/api/reset-role", methods=["POST"])
-@app.route("/api/reset-role", methods=["POST"])
 def api_reset_role():
     """Permet de réinitialiser le rôle sélectionné."""
     session.permanent = True
