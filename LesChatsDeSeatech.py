@@ -48,6 +48,12 @@ try:
 except ImportError:
     GROQ_IMPORT_SUCCESS = False
 
+try:
+    from openai import OpenAI
+    ALBERT_IMPORT_SUCCESS = True
+except ImportError:
+    ALBERT_IMPORT_SUCCESS = False
+
 # Configuration du logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("seatech_chatbot")
@@ -65,6 +71,10 @@ QA_STORAGE = os.path.join(CACHE_DIR, "user_qa_memory.json")
 
 # ===== CONFIGURATION =====
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+
+ALBERT_API_KEY = os.getenv("ALBERT_API_KEY", "")
+ALBERT_BASE_URL = os.getenv("ALBERT_BASE_URL", "https://albert.api.etalab.gouv.fr/v1")
+ALBERT_MODEL = os.getenv("ALBERT_MODEL", "")
 
 LLM_MODEL = "openai/gpt-oss-20b" #llama-3.3-70b-versatile
 CONFIDENCE_THRESHOLD = 0.93
@@ -117,6 +127,19 @@ if GROQ_IMPORT_SUCCESS:
 else:
     groq_client = None
     logger.warning("GROQ non disponible - vérifiez l'installation")
+if ALBERT_IMPORT_SUCCESS and ALBERT_API_KEY:
+    try:
+        albert_client = OpenAI(
+            base_url=ALBERT_BASE_URL,
+            api_key=ALBERT_API_KEY
+        )
+        logger.info("Client Albert préparé")
+    except Exception as e:
+        logger.error(f"Erreur initialisation client Albert: {e}")
+        albert_client = None
+else:
+    albert_client = None
+    logger.info("Client Albert inactif : clé absente ou SDK indisponible")
 
 if ML_IMPORTS_SUCCESS:
     try:
