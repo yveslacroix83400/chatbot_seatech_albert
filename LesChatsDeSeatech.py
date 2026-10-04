@@ -927,7 +927,19 @@ user_profiles_global = {}  # Stocker les profils utilisateur plutôt que dans la
 
 # Charger modèle Vosk une seule fois au démarrage
 # vosk_model = vosk.Model("models/vosk-model-fr-0.6-linto-2.2.0") 
-vosk_model = vosk.Model("models/vosk-model-small-fr-0.22")
+
+ENABLE_VOSK = os.getenv("ENABLE_VOSK", "false").strip().lower() == "true"
+
+if ENABLE_VOSK:
+    try:
+        vosk_model = vosk.Model("models/vosk-model-small-fr-0.22")
+        logger.info("Modèle Vosk chargé")
+    except Exception as e:
+        logger.error(f"Impossible de charger le modèle Vosk : {e}")
+        vosk_model = None
+else:
+    vosk_model = None
+    logger.info("Vosk désactivé")
 
 #fin ajout
 @app.route("/health", methods=["GET"])
