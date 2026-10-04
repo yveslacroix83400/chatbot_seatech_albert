@@ -475,11 +475,7 @@ def load_data():
         try:
             with open(file_path, "r", encoding="utf-8") as f:
                 content = f.read()
-            raw_chunks = [
-                chunk.strip()
-                for chunk in re.split(r"\n\s*\n", content)
-                if chunk.strip()
-            ]
+            raw_chunks = [chunk.strip() for chunk in re.split(r"\n\s*\n", content) if chunk.strip()]
             chunks_with_sources.extend((chunk, filename) for chunk in raw_chunks)
             logger.info(f"Fichier {filename} chargé : {len(raw_chunks)} chunks")
         except Exception as e:
