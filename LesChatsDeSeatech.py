@@ -141,6 +141,60 @@ else:
     albert_client = None
     logger.info("Client Albert inactif : clé absente ou SDK indisponible")
 
+def test_albert_connection(test_message="Réponds uniquement par : connexion Albert réussie."):
+    """
+    Teste isolément la connexion à Albert API.
+
+    Cette fonction n'est pas appelée automatiquement et ne modifie pas
+    le moteur utilisé par generate_answer().
+    """
+    if albert_client is None:
+        return {
+            "success": False,
+            "error": "Client Albert indisponible. Vérifiez ALBERT_API_KEY et le SDK openai."
+        }
+
+    if not ALBERT_MODEL:
+        return {
+            "success": False,
+            "error": "ALBERT_MODEL n'est pas configuré."
+        }
+
+    try:
+        response = albert_client.chat.completions.create(
+            model=ALBERT_MODEL,
+            messages=[
+                {
+                    "role": "system",
+                    "content": "Tu es un assistant de test technique. Réponds très brièvement."
+                },
+                {
+                    "role": "user",
+                    "content": test_message
+                }
+            ],
+            temperature=0.0,
+            max_tokens=50,
+            stream=False
+        )
+
+        answer = response.choices[0].message.content
+
+        return {
+            "success": True,
+            "model": ALBERT_MODEL,
+            "answer": answer
+        }
+
+    except Exception as e:
+        logger.error(f"Échec du test Albert : {type(e).__name__}: {e}")
+
+        return {
+            "success": False,
+            "error_type": type(e).__name__,
+            "error": str(e)
+        }
+
 if ML_IMPORTS_SUCCESS:
     try:
         device = "cuda" if torch.cuda.is_available() else "cpu" 
