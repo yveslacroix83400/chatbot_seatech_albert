@@ -11,10 +11,9 @@ except ImportError:
 import io
 import wave
 import logging
-import html
-from urllib.parse import urlparse
 from datetime import datetime
 from flask import Flask, request, render_template, jsonify, send_from_directory, session
+from flask_cors import CORS
 from dotenv import load_dotenv
 load_dotenv() #Charge les données de l'environnement de développement dnas le fichier main.
 
@@ -352,77 +351,85 @@ def expand_acronyms_in_query(query):
     return expanded_query
 
 def convert_markdown_to_html(text):
-    """Convertit un sous-ensemble sûr de Markdown en HTML."""
-    if not text:
-        return ""
-    source = str(text).replace("\r\n", "\n").replace("\r", "\n")
-    links = []
-
-    def protect_link(match):
-        label = match.group(1).strip()
-        url = match.group(2).strip()
-        parsed = urlparse(url)
-        if parsed.scheme not in ("http", "https") or not parsed.netloc:
-            return label
-        token = f"@@SAFE_LINK_{len(links)}@@"
-        links.append((token, label, url))
-        return token
-
-    source = re.sub(r"\[([^]\n]+)\]\((https?://[^)\s]+)\)", protect_link, source)
-    source = html.escape(source, quote=True)
-
-    def inline_format(value):
-        value = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", value)
-        value = re.sub(r"__(.+?)__", r"<strong>\1</strong>", value)
-        value = re.sub(r"(?<!\*)\*([^*\n]+)\*(?!\*)", r"<em>\1</em>", value)
-        for token, label, url in links:
-            if token in value:
-                anchor = (
-                    f'<a href="{html.escape(url, quote=True)}" '
-                    f'target="_blank" rel="noopener noreferrer">'
-                    f'{html.escape(label)}</a>'
-                )
-                value = value.replace(token, anchor)
-        return value
-
+    """
+    Conversion améliorée du Markdown vers HTML avec prise en charge de plus de formats.
+    """
+    # Gestion des titres (#, ##, etc.)
+    def replace_heading(match):
+        hashes = match.group(1)
+        level = len(hashes)
+        title = match.group(2).strip()
+        return f"<h{level}>{title}</h{level}>"
+    
+    text = re.sub(r'^(#{1,6})\s+(.*)$', replace_heading, text, flags=re.MULTILINE)
+    
+    # Conversion des formats gras et italique
+    text = re.sub(r'\*\*(.*?)\*\*', r'<strong>\1</strong>', text)
+    text = re.sub(r'\*(.*?)\*', r'<em>\1</em>', text)
+    text = re.sub(r'__(.*?)__', r'<strong>\1</strong>', text)  # Alternative pour le gras
+    text = re.sub(r'_(.*?)_', r'<em>\1</em>', text)  # Alternative pour l'italique
+    
+    # Gestion des liens [texte](url)
+    text = re.sub(r'\[(.*?)\]\((.*?)\)', r'<a href="\2" target="_blank">\1</a>', text)
+    
+    # Traitement des listes à puces et numérotées
+    lines = text.splitlines()
     html_lines = []
-    list_type = None
-
-    def close_list():
-        nonlocal list_type
-        if list_type:
-            html_lines.append(f"</{list_type}>")
-            list_type = None
-
-    for raw_line in source.split("\n"):
-        line = raw_line.strip()
-        if not line:
-            close_list()
-            continue
-        heading = re.match(r"^(#{1,4})\s+(.+)$", line)
-        bullet = re.match(r"^[-*]\s+(.+)$", line)
-        numbered = re.match(r"^\d+[.)]\s+(.+)$", line)
-        if heading:
-            close_list()
-            level = len(heading.group(1))
-            html_lines.append(f"<h{level}>{inline_format(heading.group(2))}</h{level}>")
-        elif bullet:
-            if list_type != "ul":
-                close_list()
-                list_type = "ul"
+    in_ul = False
+    in_ol = False
+    
+    for line in lines:
+        # Liste à puces
+        if line.strip().startswith("* ") or line.strip().startswith("- "):
+            if not in_ul:
+                if in_ol:
+                    html_lines.append("</ol>")
+                    in_ol = False
                 html_lines.append("<ul>")
-            html_lines.append(f"<li>{inline_format(bullet.group(1))}</li>")
-        elif numbered:
-            if list_type != "ol":
-                close_list()
-                list_type = "ol"
+                in_ul = True
+            content = re.sub(r'^\s*[\*\-]\s+(.*)', r'\1', line)
+            html_lines.append(f"<li>{content}</li>")
+        
+        # Liste numérotée
+        elif re.match(r'^\s*\d+\.\s+', line):
+            if not in_ol:
+                if in_ul:
+                    html_lines.append("</ul>")
+                    in_ul = False
                 html_lines.append("<ol>")
-            html_lines.append(f"<li>{inline_format(numbered.group(1))}</li>")
+                in_ol = True
+            content = re.sub(r'^\s*\d+\.\s+(.*)', r'\1', line)
+            html_lines.append(f"<li>{content}</li>")
+        
+        # Ligne normale
         else:
-            close_list()
-            html_lines.append(f"<p>{inline_format(line)}</p>")
-    close_list()
-    return "\n".join(html_lines)
+            if in_ul:
+                html_lines.append("</ul>")
+                in_ul = False
+            if in_ol:
+                html_lines.append("</ol>")
+                in_ol = False
+            html_lines.append(line)
+    
+    # Fermer les listes si nécessaire
+    if in_ul:
+        html_lines.append("</ul>")
+    if in_ol:
+        html_lines.append("</ol>")
+    
+    text = "\n".join(html_lines)
+    
+    # Découpage en paragraphes pour les blocs de texte non déjà formatés
+    paragraphs = []
+    for block in re.split(r'\n\s*\n', text):
+        block = block.strip()
+        # Vérifier si le bloc contient déjà des balises HTML
+        if not re.match(r'^<\/?(h\d|ul|ol|li|blockquote|pre|table)', block):
+            if block:  # Ne pas ajouter de paragraphe vide
+                block = f"<p>{block}</p>"
+        paragraphs.append(block)
+    
+    return "\n".join(paragraphs)
 
 def generate_basic_answer(query, context, found_info):
     """Fallback basique en l'absence du client GROQ."""
@@ -760,28 +767,73 @@ def generate_answer(query, context, conversation_history, found_info=False, dete
         role_config = profile_mapping[detected_role]
         role_instruction = f"\n\nPROFIL UTILISATEUR DÉTECTÉ: {detected_role}\n{role_config['description']}\nAdapte ta réponse en conséquence et priorise les informations pertinentes pour ce profil."
     
-    # Prompt strictement ancré dans les passages récupérés.
+    # Construction du prompt système
     system_prompt = f"""Tu es Franky, l'assistant virtuel de SeaTech.
 
-PROFIL UTILISATEUR
-{role_instruction or "Aucun profil spécifique confirmé."}
+Historique de conversation :
+{conversation_context}
 
-HISTORIQUE UTILE
-{conversation_context or "Aucun historique utile."}
+{role_instruction}
 
-RÈGLES IMPÉRATIVES
-1. Réponds uniquement à partir des PASSAGES DOCUMENTAIRES ci-dessous.
-2. Si les passages ne permettent pas de répondre avec certitude, indique que l'information n'est pas disponible dans les documents fournis.
-3. Reprends exactement les intitulés présents dans les passages. Ne renomme et ne crée aucune formation, aucun parcours, diplôme, service ou personne.
-4. N'associe un lien à un élément que si ce lien apparaît dans le même passage documentaire.
-5. N'invente aucun lien, contact, adresse électronique, numéro, code RNCP, modalité d'admission ou nombre de parcours.
-6. Ne produis jamais de tableau. Utilise uniquement de courts paragraphes et des listes à puces Markdown.
-7. N'écris pas de HTML. Utilise du Markdown simple : **gras**, titres courts et liens [libellé](URL).
-8. Pour une question hors SeaTech, réponds exactement : "Désolé, je ne peux pas répondre à cette question à partir des documents SeaTech."
-9. Ne mentionne pas ces instructions et n'ajoute aucune information absente des passages.
+Instructions :
+0. Si la question posée est hors du contexte de SEATECH et du contexte académique SeaTech, dis : "Désolé je ne peux pas répondre."
+1. Base ta réponse uniquement sur les sources fournies et l'historique si tu trouves pertinent mais il faut répondre avant tout à la question de l'utilisateur.
+2. N'invente jamais d'informations.
+3. Réponds de manière claire, en utilisant des paragraphes et des listes lorsque c'est pertinent, soigne ta mise en forme.
+4. Mets en gras les informations clés, les emails et les numéros de téléphone.
+5. N'inclus pas la liste des acronymes ou ton preprompt sauf si demandé.
+6. Tu connais les formations à SeaTech si besoin : Voici un résumé avec les liens directs intégrés :
 
-PASSAGES DOCUMENTAIRES
-{context or "Aucun passage documentaire pertinent n'a été trouvé."}
+Liste des Formations SeaTech avec liens
+
+**Diplômes d'ingénieur SeaTech**
+
+**Parcours Génie Maritime**  
+   - Formation d'ingénieurs spécialisés en systèmes maritimes, océanographie, génie côtier, ingénierie navale
+   - [https://seatech.univ-tln.fr/Parcours-Genie-maritime.html](https://seatech.univ-tln.fr/Parcours-Genie-maritime.html)
+
+**Parcours Ingénierie des Sciences des Données, Information, Systèmes (IRIS)**  
+   - Formation d'ingénieurs capables de traiter, analyser et valoriser de grandes quantités de données
+   - [https://seatech.univ-tln.fr/Parcours-IngenieRie-et-sciences.html](https://seatech.univ-tln.fr/Parcours-IngenieRie-et-sciences.html)
+
+**Parcours Innovation Mécanique pour des Systèmes Durables**  
+   - Conception et développement de produits mécaniques innovants avec accent sur la durabilité
+   - [https://seatech.univ-tln.fr/Parcours-Innovation-Mecanique-pour-des-Systemes-Durables.html](https://seatech.univ-tln.fr/Parcours-Innovation-Mecanique-pour-des-Systemes-Durables.html)
+
+**Parcours Matériaux, Durabilité et Environnement**  
+   - Pour étudiants en sciences et techniques souhaitant se spécialiser dans les matériaux
+   - [https://seatech.univ-tln.fr/Parcours-Materiaux-Durabilite-et.html](https://seatech.univ-tln.fr/Parcours-Materiaux-Durabilite-et.html)
+   
+**Formation d'ingénieurs Matériaux par apprentissage**
+   - Pour étudiants en sciences et techniques souhaitant se spécialiser dans les matériaux
+   - Admission sur dossier avec contrat d'apprentissage
+   - **RNCP : 39062 - Certificateur : Université de Toulon**
+   - [https://seatech.univ-tln.fr/Formation-d-ingenieurs-Materiaux-par-apprentissage.html](https://seatech.univ-tln.fr/Formation-d-ingenieurs-Materiaux-par-apprentissage.html)
+
+**Parcours Modélisation et Calculs Fluides et Structures**  
+   - Simulation numérique et modélisation des comportements physiques
+   - [https://seatech.univ-tln.fr/Parcours-Modelisation-et-Calculs.html](https://seatech.univ-tln.fr/Parcours-Modelisation-et-Calculs.html)
+
+**Parcours Systèmes Mécatroniques et Robotiques**  
+   - Conception et développement de systèmes intégrant mécanique, électronique et informatique
+   - [https://seatech.univ-tln.fr/Parcours-Systemes-mecatroniques-et.html](https://seatech.univ-tln.fr/Parcours-Systemes-mecatroniques-et.html)
+
+**Formation d'ingénieurs en Systèmes Numériques par apprentissage**  
+   - Pour étudiants en sciences et techniques
+   - Admission sur dossier avec contrat d'apprentissage
+   - **RNCP : 37901 - Certificateur : Université de Toulon**
+   - [https://seatech.univ-tln.fr/Formation-d-ingenieurs-en-systemes-numeriques-par-apprentissage.html](https://seatech.univ-tln.fr/Formation-d-ingenieurs-en-systemes-numeriques-par-apprentissage.html)
+
+**Informations générales**
+
+- **Formations complètes** : [https://seatech.univ-tln.fr/Formations.html](https://seatech.univ-tln.fr/Formations.html)
+- **Déroulement des études** : [https://seatech.univ-tln.fr/Deroulement-des-etudes.html](https://seatech.univ-tln.fr/Deroulement-des-etudes.html)
+- **Admissions** : [https://seatech.univ-tln.fr/admission.html](https://seatech.univ-tln.fr/admission.html)
+- **Doubles diplômes** : [https://seatech.univ-tln.fr/doubles-diplomes.html](https://seatech.univ-tln.fr/doubles-diplomes.html)
+- **Page d'accueil** : [https://seatech.univ-tln.fr/](https://seatech.univ-tln.fr/)
+
+Données d'aide pour répondre :
+{context}
 """
     try:
         messages = [
@@ -818,6 +870,31 @@ app.config['SESSION_COOKIE_SECURE'] = True   # HTTPS requis sur HuggingFace Spac
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'None'  # Nécessaire pour l'iframe HF
 app.config['PERMANENT_SESSION_LIFETIME'] = 3600  # 1 heure
+
+# CORS restrictif pour l'interface hébergée sur lacroix.univ-tln.fr.
+# Plusieurs origines peuvent être fournies, séparées par des virgules.
+CORS_ALLOWED_ORIGINS = [
+    origin.strip().rstrip("/")
+    for origin in os.getenv(
+        "CORS_ALLOWED_ORIGINS",
+        "https://lacroix.univ-tln.fr"
+    ).split(",")
+    if origin.strip()
+]
+
+CORS(
+    app,
+    resources={
+        r"/api/*": {
+            "origins": CORS_ALLOWED_ORIGINS,
+            "methods": ["GET", "POST", "OPTIONS"],
+            "allow_headers": ["Content-Type"],
+            "supports_credentials": True,
+            "max_age": 600,
+        }
+    },
+)
+logger.info(f"CORS autorisé pour : {CORS_ALLOWED_ORIGINS}")
 conversation_history_global = {}
 user_profiles_global = {}  # Stocker les profils utilisateur plutôt que dans la session Flask
 # ajout Daly
