@@ -8,3 +8,4 @@ groq
 python-dotenv
 vosk
 openai
+gunicorn
