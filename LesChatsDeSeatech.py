@@ -776,7 +776,7 @@ search_index, use_faiss = setup_search_index(chunk_embeddings)
 
 # ===== APPLICATION FLASK =====
 app = Flask(__name__, static_folder="static", template_folder="templates")
-app.secret_key = 'seatech_chat_secret_key'
+app.secret_key = os.getenv('FLASK_SECRET_KEY', 'development-only-secret-key')
 app.config['SESSION_COOKIE_SECURE'] = True   # HTTPS requis sur HuggingFace Spaces
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'None'  # Nécessaire pour l'iframe HF
@@ -790,6 +790,10 @@ user_profiles_global = {}  # Stocker les profils utilisateur plutôt que dans la
 vosk_model = vosk.Model("models/vosk-model-small-fr-0.22")
 
 #fin ajout
+@app.route("/health", methods=["GET"])
+def health():
+    return jsonify({"status": "ok", "service": "chatbot-seatech"})
+
 
 @app.route("/", methods=["GET", "POST"])
 def index():
