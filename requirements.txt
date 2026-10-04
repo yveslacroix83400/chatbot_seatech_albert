@@ -1,11 +1,6 @@
 Flask
-torch
 numpy
-faiss-cpu
-sentence-transformers
-scikit-learn
 groq
 python-dotenv
-vosk
 openai
 gunicorn

@@ -4,7 +4,10 @@ import json
 import pickle
 import time
 import uuid
-import vosk
+try:
+    import vosk
+except ImportError:
+    vosk = None
 import io
 import wave
 import logging
@@ -14,33 +17,27 @@ from dotenv import load_dotenv
 load_dotenv() #Charge les données de l'environnement de développement dnas le fichier main.
 
 
-import urllib.request
-import zipfile
+ENABLE_VOSK = os.getenv("ENABLE_VOSK", "false").strip().lower() == "true"
 
-model_url = "https://alphacephei.com/vosk/models/vosk-model-small-fr-0.22.zip"
-model_path = "models/vosk-model-small-fr-0.22"
+if ENABLE_VOSK:
+    if vosk is None:
+        raise RuntimeError("ENABLE_VOSK=true mais le paquet vosk n'est pas installé.")
+    import urllib.request
+    import zipfile
+    model_url = "https://alphacephei.com/vosk/models/vosk-model-small-fr-0.22.zip"
+    model_path = "models/vosk-model-small-fr-0.22"
+    if not os.path.exists(model_path):
+        print("Téléchargement du modèle vocal Vosk...")
+        os.makedirs("models", exist_ok=True)
+        urllib.request.urlretrieve(model_url, "model.zip")
+        with zipfile.ZipFile("model.zip", "r") as zip_ref:
+            zip_ref.extractall("models")
+        os.remove("model.zip")
 
-if not os.path.exists(model_path):
-    print("Downloading speech model...")
-    os.makedirs("models", exist_ok=True)
-    urllib.request.urlretrieve(model_url, "model.zip")
+# Importations légères pour le RAG distant Albert
+import numpy as np
+ML_IMPORTS_SUCCESS = True
 
-    with zipfile.ZipFile("model.zip", 'r') as zip_ref:
-        zip_ref.extractall("models")
-
-    os.remove("model.zip")
-
-# Importations ML et API
-try:
-    import torch
-    import numpy as np
-    import faiss
-    from sentence_transformers import SentenceTransformer
-    from sklearn.metrics.pairwise import cosine_similarity
-    ML_IMPORTS_SUCCESS = True
-except ImportError:
-    ML_IMPORTS_SUCCESS = False
-    
 
 try:
     from groq import Groq
@@ -65,8 +62,8 @@ USER_DB_DIR = os.path.join(BASE_DIR, "database", "user_database")
 CACHE_DIR = os.path.join(BASE_DIR, "cache")
 for directory in [DATA_DIR, USER_DB_DIR, CACHE_DIR]:
     os.makedirs(directory, exist_ok=True)
-EMBEDDINGS_CACHE = os.path.join(CACHE_DIR, "chunk_embeddings.pkl")
-CHUNKS_CACHE = os.path.join(CACHE_DIR, "chunks_with_sources.pkl")
+EMBEDDINGS_CACHE = os.path.join(CACHE_DIR, "albert_chunk_embeddings.pkl")
+CHUNKS_CACHE = os.path.join(CACHE_DIR, "albert_chunks_with_sources.pkl")
 QA_STORAGE = os.path.join(CACHE_DIR, "user_qa_memory.json")
 
 # ===== CONFIGURATION =====
@@ -75,6 +72,7 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 ALBERT_API_KEY = os.getenv("ALBERT_API_KEY", "")
 ALBERT_BASE_URL = os.getenv("ALBERT_BASE_URL", "https://albert.api.etalab.gouv.fr/v1")
 ALBERT_MODEL = os.getenv("ALBERT_MODEL", "")
+ALBERT_EMBEDDING_MODEL = os.getenv("ALBERT_EMBEDDING_MODEL", "bge-m3")
 
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "groq").strip().lower()
 
@@ -197,19 +195,8 @@ def test_albert_connection(test_message="Réponds uniquement par : connexion Alb
             "error": str(e)
         }
 
-if ML_IMPORTS_SUCCESS:
-    try:
-        device = "cuda" if torch.cuda.is_available() else "cpu" 
-        #embedding_model = SentenceTransformer('intfloat/e5-large-v2', device='cpu')
-        embedding_model = SentenceTransformer('all-MiniLM-L6-v2', device='cpu')
-        embedding_model.max_seq_length = 256  # Réduire la longueur max
-        logger.info(f"Modèle d'embedding chargé sur {device}")
-    except Exception as e:
-        logger.error(f"Erreur chargement modèle d'embedding: {e}")
-        embedding_model = None
-else:
-    embedding_model = None
-    logger.warning("Bibliothèques ML non disponibles")
+embedding_model = None
+logger.info("RAG léger activé : embeddings fournis par Albert API")
 
 
 def handle_role_selection(session_id, selected_role=None):
@@ -473,154 +460,119 @@ def create_default_data():
             f.write("et MTX (Matériaux). Les formations peuvent être suivies en statut étudiant (FISE) ou en apprentissage (FISA).\n")
 
 def load_data():
-    """Charge les fichiers dans DATA_DIR et découpe le contenu en chunks avec timestamp de dernière modification."""
+    """Charge toujours le corpus et le découpe en chunks.
+
+    Le cache d'embeddings est validé séparément dans compute_embeddings().
+    """
     create_default_data()
     chunks_with_sources = []
-    valid_extensions = ['.txt', '.md', '.html', '.csv','.json']
-    
-    # Charger un cache des timestamps si disponible
-    timestamp_cache_path = os.path.join(CACHE_DIR, "file_timestamps.json")
-    file_timestamps = {}
-    reload_all = False
-    
-    if os.path.exists(timestamp_cache_path):
-        try:
-            with open(timestamp_cache_path, "r", encoding="utf-8") as f:
-                file_timestamps = json.load(f)
-        except Exception as e:
-            logger.error(f"Erreur chargement cache timestamps: {e}")
-            reload_all = True
-    
-    # Vérifier et charger les fichiers
-    for filename in os.listdir(DATA_DIR):
+    valid_extensions = (".txt", ".md", ".html", ".csv", ".json")
+
+    for filename in sorted(os.listdir(DATA_DIR)):
         file_path = os.path.join(DATA_DIR, filename)
-        if os.path.isfile(file_path) and any(filename.endswith(ext) for ext in valid_extensions):
-            # Vérifier si le fichier a été modifié
-            mtime = os.path.getmtime(file_path)
-            
-            if reload_all or filename not in file_timestamps or file_timestamps[filename] < mtime:
-                try:
-                    with open(file_path, "r", encoding="utf-8") as f:
-                        content = f.read()
-                    # Découpage en chunks selon les paragraphes
-                    raw_chunks = [chunk.strip() for chunk in re.split(r"\n\s*\n", content) if chunk.strip()]
-                    for chunk in raw_chunks:
-                        chunks_with_sources.append((chunk, filename))
-                    logger.info(f"Fichier {filename} chargé : {len(raw_chunks)} chunks")
-                    file_timestamps[filename] = mtime
-                except Exception as e:
-                    logger.error(f"Erreur chargement {filename}: {e}")
-    
-    # Sauvegarder les timestamps mis à jour
-    try:
-        with open(timestamp_cache_path, "w", encoding="utf-8") as f:
-            json.dump(file_timestamps, f)
-    except Exception as e:
-        logger.error(f"Erreur sauvegarde cache timestamps: {e}")
-    
+        if not os.path.isfile(file_path) or not filename.endswith(valid_extensions):
+            continue
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                content = f.read()
+            raw_chunks = [
+                chunk.strip()
+                for chunk in re.split(r"\n\s*\n", content)
+                if chunk.strip()
+            ]
+            chunks_with_sources.extend((chunk, filename) for chunk in raw_chunks)
+            logger.info(f"Fichier {filename} chargé : {len(raw_chunks)} chunks")
+        except Exception as e:
+            logger.error(f"Erreur chargement {filename}: {e}")
+
+    logger.info(f"Corpus chargé : {len(chunks_with_sources)} chunks")
     return chunks_with_sources
 
+def get_albert_embeddings(texts, batch_size=32):
+    """Vectorise une chaîne ou une liste de chaînes avec Albert API."""
+    if albert_client is None:
+        raise RuntimeError("Client Albert indisponible pour les embeddings.")
+    if not ALBERT_EMBEDDING_MODEL:
+        raise RuntimeError("ALBERT_EMBEDDING_MODEL n'est pas configuré.")
+    single_input = isinstance(texts, str)
+    items = [texts] if single_input else list(texts)
+    if not items:
+        return np.empty((0, 0), dtype=np.float32)
+    vectors = []
+    for offset in range(0, len(items), batch_size):
+        response = albert_client.embeddings.create(
+            model=ALBERT_EMBEDDING_MODEL,
+            input=items[offset:offset + batch_size],
+            encoding_format="float"
+        )
+        vectors.extend(item.embedding for item in sorted(response.data, key=lambda x: x.index))
+    array = np.asarray(vectors, dtype=np.float32)
+    array /= np.clip(np.linalg.norm(array, axis=1, keepdims=True), 1e-12, None)
+    return array[0] if single_input else array
+
+
 def compute_embeddings(chunks_with_sources):
-    """Calcule ou charge les embeddings pour les chunks."""
-    if not embedding_model:
-        logger.warning("Modèle d'embedding non disponible")
-        dummy_embeddings = np.zeros((len(chunks_with_sources), 384))
-        return dummy_embeddings, chunks_with_sources
+    """Calcule ou charge les embeddings Albert pour les chunks."""
     if os.path.exists(EMBEDDINGS_CACHE) and os.path.exists(CHUNKS_CACHE):
         try:
             with open(EMBEDDINGS_CACHE, "rb") as f:
                 cached_embeddings = pickle.load(f)
             with open(CHUNKS_CACHE, "rb") as f:
                 cached_chunks = pickle.load(f)
-            if len(cached_embeddings) == len(cached_chunks):
-                logger.info(f"Cache chargé : {len(cached_embeddings)} embeddings")
-                return cached_embeddings, cached_chunks
+            if (
+                chunks_with_sources
+                and len(cached_embeddings) == len(cached_chunks) == len(chunks_with_sources)
+                and cached_chunks == chunks_with_sources
+            ):
+                logger.info(f"Cache Albert chargé : {len(cached_embeddings)} embeddings")
+                return np.asarray(cached_embeddings, dtype=np.float32), cached_chunks
+            logger.info("Cache Albert vide ou obsolète : recalcul nécessaire")
         except Exception as e:
-            logger.error(f"Erreur chargement cache: {e}")
+            logger.error(f"Erreur chargement cache Albert: {e}")
     try:
-        chunk_texts = [chunk[0] for chunk in chunks_with_sources]
-        embeddings = embedding_model.encode(chunk_texts, batch_size=8, convert_to_tensor=True)
-        chunk_embeddings = embeddings.cpu().numpy() if torch.is_tensor(embeddings) else np.array(embeddings)
+        chunk_embeddings = get_albert_embeddings([chunk[0] for chunk in chunks_with_sources])
         with open(EMBEDDINGS_CACHE, "wb") as f:
             pickle.dump(chunk_embeddings, f)
         with open(CHUNKS_CACHE, "wb") as f:
             pickle.dump(chunks_with_sources, f)
-        logger.info(f"Embeddings calculés et sauvegardés : {len(chunk_embeddings)}")
+        logger.info(f"Embeddings Albert calculés et sauvegardés : {len(chunk_embeddings)}")
         return chunk_embeddings, chunks_with_sources
     except Exception as e:
-        logger.error(f"Erreur calcul embeddings: {e}")
-        dummy_embeddings = np.zeros((len(chunks_with_sources), 384))
-        return dummy_embeddings, chunks_with_sources
+        logger.error(f"Erreur calcul embeddings Albert: {e}")
+        return np.empty((0, 0), dtype=np.float32), chunks_with_sources
 
-# ===== INDEXATION AVEC FAISS =====
+
 def setup_search_index(embeddings):
-    """
-    Configure l'index FAISS.
-    Utilise IndexIVFFlat pour un grand nombre d'embeddings, sinon IndexFlatL2.
-    """
-    if not ML_IMPORTS_SUCCESS or embeddings.size == 0:
-        logger.warning("Index de recherche non disponible")
+    """Prépare une matrice NumPy normalisée, sans FAISS."""
+    if embeddings is None or embeddings.size == 0:
+        logger.warning("Index NumPy indisponible, recherche par mots-clés activée")
         return None, False
-    try:
-        d = embeddings.shape[1]
-        if embeddings.shape[0] > 1000:
-            quantizer = faiss.IndexFlatL2(d)
-            index = faiss.IndexIVFFlat(quantizer, d, 100, faiss.METRIC_L2)
-            index.train(embeddings)
-            index.add(embeddings)
-            logger.info(f"Index FAISS IVFFlat créé avec {index.ntotal} vecteurs")
-            return index, True
-        else:
-            index = faiss.IndexFlatL2(d)
-            index.add(embeddings)
-            logger.info(f"Index FAISS FlatL2 créé avec {index.ntotal} vecteurs")
-            return index, True
-    except Exception as e:
-        logger.error(f"Erreur initialisation index: {e}")
-        return None, False
+    matrix = np.asarray(embeddings, dtype=np.float32)
+    matrix /= np.clip(np.linalg.norm(matrix, axis=1, keepdims=True), 1e-12, None)
+    logger.info(f"Index NumPy créé avec {len(matrix)} vecteurs")
+    return matrix, False
+
 
 def search_similar_chunks_with_confirmed_role(query, index, is_faiss, embeddings, chunks_data, conversation_history=None, confirmed_role=None, top_n=5):
-    """Recherche avec rôle confirmé par l'utilisateur."""
-    
-    # Recherche de base (identique à l'ancienne fonction)
-    if not embedding_model or not index:
+    """Recherche sémantique légère avec Albert embeddings et NumPy."""
+    if index is None or not chunks_data:
         results = keyword_search(query, chunks_data, top_n)
     else:
         try:
-            query_expanded = expand_acronyms_in_query(query)
-            query_embedding = embedding_model.encode(query_expanded, convert_to_tensor=False)
-            query_embedding = np.array(query_embedding, dtype=np.float32).reshape(1, -1)
-            
-            if is_faiss:
-                distances, indices = index.search(query_embedding, min(top_n * 2, len(chunks_data)))
-                distances, indices = distances[0], indices[0]
-                results = []
-                for i, idx in enumerate(indices):
-                    if 0 <= idx < len(chunks_data):
-                        score = 1 / (1 + distances[i])
-                        results.append((chunks_data[idx][0], chunks_data[idx][1], score))
-            else:
-                similarities = cosine_similarity(query_embedding, embeddings)[0]
-                top_indices = np.argsort(similarities)[-top_n*2:][::-1]
-                results = [(chunks_data[idx][0], chunks_data[idx][1], similarities[idx])
-                           for idx in top_indices if similarities[idx] > 0.1]
-            
-            results = sorted(results, key=lambda x: x[2], reverse=True)[:top_n*2]
+            query_embedding = get_albert_embeddings(expand_acronyms_in_query(query))
+            similarities = np.asarray(index, dtype=np.float32) @ query_embedding
+            limit = min(top_n * 2, len(chunks_data))
+            top_indices = np.argsort(similarities)[-limit:][::-1]
+            results = [(chunks_data[i][0], chunks_data[i][1], float(similarities[i])) for i in top_indices if similarities[i] > 0.1]
         except Exception as e:
-            logger.error(f"Erreur de recherche: {e}")
+            logger.error(f"Erreur recherche Albert/NumPy: {e}")
             results = keyword_search(query, chunks_data, top_n)
-    
-    # Utiliser le rôle confirmé ou détecter automatiquement
     if confirmed_role:
-        detected_role = confirmed_role
-        role_confidence = 1.0  # Confiance maximale car confirmé par l'utilisateur
+        detected_role, role_confidence = confirmed_role, 1.0
     else:
         detected_role, role_confidence = detect_user_role(query, conversation_history)
-    
-    # Filtrer et réorganiser les résultats selon le rôle
-    filtered_results = filter_chunks_by_role(results, detected_role, role_confidence)
-    
-    return filtered_results[:top_n], detected_role, role_confidence
+    return filter_chunks_by_role(results, detected_role, role_confidence)[:top_n], detected_role, role_confidence
+
 # 3. Fonction pour vérifier si l'utilisateur a confirmé son rôle
 def is_role_confirmed(session_id):
     """Vérifie si l'utilisateur a confirmé son rôle."""
@@ -928,7 +880,7 @@ user_profiles_global = {}  # Stocker les profils utilisateur plutôt que dans la
 # Charger modèle Vosk une seule fois au démarrage
 # vosk_model = vosk.Model("models/vosk-model-fr-0.6-linto-2.2.0") 
 
-ENABLE_VOSK = os.getenv("ENABLE_VOSK", "false").strip().lower() == "true"
+
 
 if ENABLE_VOSK:
     try:

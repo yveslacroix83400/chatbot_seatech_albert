@@ -10,3 +10,9 @@ __pycache__/
 # Data / cache / models
 models/
 cache/
+
+# Cache RAG Albert pré-calculé pour Render
+!cache/
+cache/*
+!cache/albert_chunk_embeddings.pkl
+!cache/albert_chunks_with_sources.pkl
